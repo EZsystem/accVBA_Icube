@@ -1,0 +1,293 @@
+Option Compare Database
+Option Explicit
+
+'==========================================================
+' コード名: mod_inp2_Icube
+' 概要:
+'   1) Excelデータを取り込み、Accessテーブル"Icube_"に登録
+'   2) "tdll_削除レコード"テーブルにある
+'       [対象フィールド名, 削除対象値(ワイルドカード可)] と比較し、
+'       一致すればレコードをスキップ
+'   3) ブランク/Nullの場合は "tb_Excelデフォルト値" を参照して補完
+' 生成日: 2025/01/28
+'==========================================================
+
+Public Sub mod_inp2_Icube()
+    On Error GoTo ErrHandle
+
+    ' === 1. ファイル選択 ===
+    Dim filePath As String
+    filePath = SelectExcelFileXLSX()    ' ユーザー定義のファイル選択関数と想定
+    If filePath = "" Then
+        MsgBox "ファイルが選択されていません。処理を中止します。", vbExclamation
+        Exit Sub
+    End If
+
+    ' === 2. Access DB・レコードセット等を初期化 ===
+    Dim db As DAO.Database
+    Set db = CurrentDb()
+
+    Dim rs As DAO.Recordset
+    Dim tDef As DAO.TableDef
+    Dim fld As DAO.Field
+
+    Dim tableName As String
+    tableName = "Icube_"        ' 取込先テーブル名
+
+    Dim deleteTable As String
+    deleteTable = "tdll_削除レコード"  ' スキップ条件参照テーブル名
+
+    Dim defaultTable As String
+    defaultTable = "tb_Excelデフォルト値"  ' デフォルト値参照テーブル名
+
+    Set tDef = db.TableDefs(tableName)
+    Set rs = db.OpenRecordset(tableName, dbOpenDynaset)
+
+    ' === 3. タイトル行(フィールド名)情報を取得 ===
+    '    → 後段で FieldExists を使うために、テーブル側のフィールド名リストも確保
+    Dim fieldTypes As New Collection
+    For Each fld In tDef.Fields
+        fieldTypes.Add fld.Name, fld.Name
+    Next fld
+
+    ' === 4. スキップ条件を取得 (Dictionary) ===
+    Dim skipConditions As Object
+    Set skipConditions = GetSkipConditions(deleteTable)
+    ' skipConditions("工事コード") = Array("C*", "Y*")
+    ' skipConditions("営業担当組織コード") = Array("320220500", "320720568", ...)
+
+    ' === 5. デフォルト値を取得 ===
+    Dim defaultValues As Object
+    Set defaultValues = GetDefaultValues(defaultTable)
+    ' defaultValues("工事コード") = "XXXX"
+    ' ...
+
+    ' === 6. Excelファイルを開く ===
+    Dim xlApp As Object
+    Dim xlWB As Object
+    Dim xlSheet As Object
+
+    Set xlApp = CreateObject("Excel.Application")
+    Dim oldScreenUpdating As Boolean: oldScreenUpdating = xlApp.ScreenUpdating
+    xlApp.ScreenUpdating = False
+
+    Set xlWB = xlApp.Workbooks.Open(filePath)
+    Set xlSheet = xlWB.Sheets(1)   ' 1枚目のシートを想定
+
+    ' === 7. Excelのタイトル行 (5行目) を取得 ===
+    Dim colStart As Long: colStart = 2  ' B列 = 2 (ご要望に応じて)
+    Dim lastCol As Long, Col As Long
+    lastCol = xlSheet.Cells(5, xlSheet.Columns.Count).End(-4159).Column ' xlToLeft = -4159
+    Dim fieldNames As Variant
+    fieldNames = xlSheet.Range(xlSheet.Cells(5, colStart), xlSheet.Cells(5, lastCol)).value
+    
+    'For Col = 2 To lastCol ' B列=2列目
+        fieldNames(1, 1) = "No" ' フィールド名の置換
+        'fieldNames(Col) = Replace(xlSheet.Cells(5, Col).value, "No.", "No") ' フィールド名の置換
+    'Next Col
+    
+    
+    ' fieldNames は 1行 × (列数) の2次元配列
+
+    ' === 8. データ行を配列に格納 ===
+    Dim lastRow As Long
+    lastRow = xlSheet.Cells(xlSheet.Rows.Count, colStart).End(-4162).row ' xlUp = -4162
+
+    Dim data As Variant
+    data = xlSheet.Range(xlSheet.Cells(6, colStart), xlSheet.Cells(lastRow, lastCol)).value
+    ' data は (行数)×(列数) の2次元配列
+
+    ' === 9. データを Access テーブルに書き込み ===
+    Dim i As Long, j As Long
+    For i = 1 To UBound(data, 1)    ' 行ループ
+
+        ' スキップ判定
+        If ShouldSkipRecord(fieldNames, data, i, skipConditions) Then
+            ' スキップする場合は次の行へ
+            GoTo SkipRecord
+        End If
+
+        ' スキップしない場合、レコードを追加
+        rs.AddNew
+        For j = 1 To UBound(data, 2)   ' 列ループ
+            Dim fieldNameToAdd As String
+            Dim cellValueToAdd As Variant
+
+            fieldNameToAdd = fieldNames(1, j)  ' タイトル行の j 列目
+            cellValueToAdd = data(i, j)        ' i 行目、j 列目のデータ
+
+            ' ブランク / Null をデフォルト値で置換
+            If IsNull(cellValueToAdd) Or cellValueToAdd = "" Then
+                If defaultValues.Exists(fieldNameToAdd) Then
+                    cellValueToAdd = defaultValues(fieldNameToAdd)
+                End If
+            End If
+
+            ' フィールド名が Access テーブルに存在する場合のみ値をセット
+            If FieldExists(fieldTypes, fieldNameToAdd) Then
+                rs.Fields(fieldNameToAdd).value = cellValueToAdd
+            End If
+        Next j
+        rs.Update
+
+SkipRecord:
+    Next i
+
+    ' === 後片付け ===
+Finalize:
+    If Not (rs Is Nothing) Then rs.Close
+    Set rs = Nothing
+    Set db = Nothing
+
+    If Not (xlWB Is Nothing) Then xlWB.Close False
+    Set xlWB = Nothing
+
+    If Not (xlApp Is Nothing) Then
+        xlApp.ScreenUpdating = oldScreenUpdating
+        xlApp.Quit
+    End If
+    Set xlApp = Nothing
+
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生しました: " & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
+'-------------------------------------------------
+' ■ tdll_削除レコード から「スキップ条件」を取得
+'    Dictionary(キー:対象フィールド名) → Variant()配列(削除対象値)
+'    例：
+'      skipConditions("工事コード") = Array("C*", "Y*")
+'      skipConditions("営業担当組織コード") = Array("320220500","320720568", ...)
+'-------------------------------------------------
+Function GetSkipConditions(deleteTable As String) As Object
+    Dim skipDic As Object
+    Set skipDic = CreateObject("Scripting.Dictionary")
+
+    Dim deleteRs As DAO.Recordset
+    Set deleteRs = CurrentDb.OpenRecordset(deleteTable, dbOpenSnapshot)
+
+    Do While Not deleteRs.EOF
+        Dim fName As String
+        Dim skipValue As String
+
+        fName = Trim(Nz(deleteRs!対象フィールド名, ""))      ' フィールド名
+        skipValue = Trim(Nz(deleteRs!削除対象値, ""))        ' 削除対象値(ワイルドカード可)
+
+        If fName <> "" And skipValue <> "" Then
+            ' まだDictionaryにキーがないなら、新規追加
+            If Not skipDic.Exists(fName) Then
+                skipDic.Add fName, New Collection
+            End If
+            ' コレクションに削除対象値を追加 (同じキーに複数行があってもOK)
+            skipDic(fName).Add skipValue
+        End If
+
+        deleteRs.MoveNext
+    Loop
+    deleteRs.Close
+    Set deleteRs = Nothing
+
+    Set GetSkipConditions = skipDic
+End Function
+
+'-------------------------------------------------
+' ■ スキップ判定
+'   - 引数 skipConditions は
+'       Dictionary(対象フィールド名) = Collection of ワイルドカードパターン
+'   - Excelの行をチェックし、どれか1列でも条件に合致すれば True を返す
+'-------------------------------------------------
+Function ShouldSkipRecord(fieldNames As Variant, data As Variant, rowIndex As Long, skipConditions As Object) As Boolean
+    Dim i As Long
+    Dim colCount As Long
+    colCount = UBound(fieldNames, 2) ' タイトル列数
+
+    Dim fieldName As String
+    Dim rawValue As Variant
+    Dim cellValue As String
+
+    For i = 1 To colCount
+        fieldName = fieldNames(1, i)    ' Excelタイトル(= 対象フィールド名想定)
+        rawValue = data(rowIndex, i)
+
+        If IsNull(rawValue) Then
+            cellValue = ""
+        Else
+            cellValue = Trim(CStr(rawValue))
+        End If
+
+        ' スキップ条件に fieldName キーがあるか？
+        If skipConditions.Exists(fieldName) Then
+            Dim skipList As Collection
+            Set skipList = skipConditions(fieldName)  ' このフィールド名に紐づく削除対象値(ワイルドカード含む)一覧
+
+            Dim k As Long
+            For k = 1 To skipList.Count
+                Dim pattern As String
+                pattern = skipList(k)  ' "C*", "Y*", etc
+
+                ' VBAの Like 演算子を使用
+                '    → "*" は 0文字以上の任意文字列
+                '    → "?" は 任意の1文字
+                '  例：cellValue = "C123" And pattern = "C*" → True
+                If cellValue Like pattern Then
+                    ShouldSkipRecord = True
+                    Exit Function
+                End If
+            Next k
+        End If
+    Next i
+
+    ' どの条件にも合わなかったら False
+    ShouldSkipRecord = False
+End Function
+
+'-------------------------------------------------
+' ■ デフォルト値を取得
+'   - tb_Excelデフォルト値テーブルから
+'       タイトル名 → デフォルト値
+'     を Dictionary に格納
+'-------------------------------------------------
+Function GetDefaultValues(defaultTable As String) As Object
+    Dim defaultRs As DAO.Recordset
+    Set defaultRs = CurrentDb.OpenRecordset(defaultTable, dbOpenSnapshot)
+
+    Dim defaultDic As Object
+    Set defaultDic = CreateObject("Scripting.Dictionary")
+
+    Do While Not defaultRs.EOF
+        Dim key As String
+        Dim value As Variant
+
+        key = Trim(Nz(defaultRs!タイトル名, ""))
+        value = defaultRs!デフォルト値
+
+        If IsNull(value) Then
+            value = ""  ' Null値を空文字列に置換
+        End If
+
+        If key <> "" Then
+            If Not defaultDic.Exists(key) Then
+                defaultDic.Add key, value
+            End If
+        End If
+
+        defaultRs.MoveNext
+    Loop
+    defaultRs.Close
+    Set defaultRs = Nothing
+
+    Set GetDefaultValues = defaultDic
+End Function
+
+'-------------------------------------------------
+' ■ フィールド名が存在するか確認
+'-------------------------------------------------
+Function FieldExists(fieldTypes As Collection, fieldName As String) As Boolean
+    On Error Resume Next
+    FieldExists = Not IsEmpty(fieldTypes(fieldName))
+    On Error GoTo 0
+End Function
+
