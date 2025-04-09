@@ -1,0 +1,310 @@
+Option Compare Database
+
+'テーブル転写：Icubeから基本工事_完工
+Public Sub mod_tabCopy2_kihonkannko1()
+    On Error GoTo ErrHandle
+
+    Dim db As DAO.Database
+    Dim rsSource As DAO.Recordset
+    Dim rsTarget As DAO.Recordset
+    Dim baseCode As Variant
+
+    Set db = CurrentDb()
+
+    Set rsSource = db.OpenRecordset("SELECT * FROM Icube_", dbOpenSnapshot)
+    Set rsTarget = db.OpenRecordset("kt_基本工事_完工", dbOpenDynaset)
+
+    Do While Not rsSource.EOF
+        baseCode = rsSource!基本工事コード
+
+        If DCount("*", "kt_基本工事_完工", "基本工事コード = '" & Replace(baseCode, "'", "''") & "'") = 0 Then
+            rsTarget.AddNew
+
+            Dim fld As DAO.Field
+            For Each fld In rsSource.Fields
+                If FieldExists(rsTarget, fld.Name) Then
+                    ' === ここだけの個別エラーキャッチに変更にゃ ===
+                    On Error Resume Next
+                    rsTarget(fld.Name).value = fld.value
+                    If Err.Number <> 0 Then
+                        Debug.Print "【型エラー】フィールド名: " & fld.Name
+                        Debug.Print "→ 値: " & fld.value & " ／ 型: " & TypeName(fld.value)
+                        Debug.Print "→ エラー内容: " & Err.description
+                        Err.Clear
+                    End If
+                    On Error GoTo ErrHandle
+                End If
+            Next fld
+
+            rsTarget.Update
+        End If
+
+        rsSource.MoveNext
+    Loop
+
+    'MsgBox "基本工事コードをもとにした転写が完了しましたニャ！", vbInformation
+    GoTo Finalize
+
+Finalize:
+    On Error Resume Next
+    If Not rsSource Is Nothing Then rsSource.Close
+    If Not rsTarget Is Nothing Then rsTarget.Close
+    Set rsSource = Nothing
+    Set rsTarget = Nothing
+    Set db = Nothing
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生したニャ：" & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
+'テーブル転写：Icubeから基本工事_作業所
+Public Sub mod_tabCopy2_kihonSagyou1()
+    On Error GoTo ErrHandle
+
+    Dim db As DAO.Database
+    Dim rsSource As DAO.Recordset
+    Dim rsTarget As DAO.Recordset
+    Dim baseCode As Variant
+    Dim fld As DAO.Field
+
+    Set db = CurrentDb()
+
+    ' 転写元：Icube_
+    Set rsSource = db.OpenRecordset("SELECT * FROM Icube_", dbOpenSnapshot)
+
+    ' 転写先：kt_基本工事_作業所
+    Set rsTarget = db.OpenRecordset("kt_基本工事_作業所", dbOpenDynaset)
+
+    Do While Not rsSource.EOF
+        baseCode = rsSource!基本工事コード
+
+        ' 転写先に既に存在する基本工事コードかチェック
+        If DCount("*", "kt_基本工事_作業所", "基本工事コード = '" & Replace(baseCode, "'", "''") & "'") = 0 Then
+            rsTarget.AddNew
+
+            For Each fld In rsSource.Fields
+                If FieldExists(rsTarget, fld.Name) Then
+                    On Error Resume Next
+                    rsTarget(fld.Name).value = fld.value
+                    If Err.Number <> 0 Then
+                        Debug.Print "【型エラー】フィールド名: " & fld.Name
+                        Debug.Print "→ 値: " & fld.value & " ／ 型: " & TypeName(fld.value)
+                        Debug.Print "→ エラー内容: " & Err.description
+                        Err.Clear
+                    End If
+                    On Error GoTo ErrHandle
+                End If
+            Next fld
+
+            rsTarget.Update
+        End If
+
+        rsSource.MoveNext
+    Loop
+
+    'MsgBox "基本工事コードでの作業所転写が完了しましたニャ！", vbInformation
+    GoTo Finalize
+
+Finalize:
+    On Error Resume Next
+    If Not rsSource Is Nothing Then rsSource.Close
+    If Not rsTarget Is Nothing Then rsTarget.Close
+    Set rsSource = Nothing
+    Set rsTarget = Nothing
+    Set db = Nothing
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生したニャ：" & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
+'テーブル転写：Icubeから基本工事_受注
+Public Sub mod_tabCopy2_kihonJyutyu1()
+    On Error GoTo ErrHandle
+
+    Dim db As DAO.Database
+    Dim rsSource As DAO.Recordset
+    Dim rsTarget As DAO.Recordset
+    Dim baseCode As Variant
+    Dim fld As DAO.Field
+
+    Set db = CurrentDb()
+
+    ' 転写元：Icube_
+    Set rsSource = db.OpenRecordset("SELECT * FROM Icube_", dbOpenSnapshot)
+
+    ' 転写先：kt_基本工事_受注
+    Set rsTarget = db.OpenRecordset("kt_基本工事_受注", dbOpenDynaset)
+
+    Do While Not rsSource.EOF
+        baseCode = rsSource!基本工事コード
+
+        ' 転写先に同じ基本工事コードがあるか確認
+        If DCount("*", "kt_基本工事_受注", "基本工事コード = '" & Replace(baseCode, "'", "''") & "'") = 0 Then
+            rsTarget.AddNew
+
+            For Each fld In rsSource.Fields
+                If FieldExists(rsTarget, fld.Name) Then
+                    On Error Resume Next
+                    rsTarget(fld.Name).value = fld.value
+                    If Err.Number <> 0 Then
+                        Debug.Print "【型エラー】フィールド名: " & fld.Name
+                        Debug.Print "→ 値: " & fld.value & " ／ 型: " & TypeName(fld.value)
+                        Debug.Print "→ エラー内容: " & Err.description
+                        Err.Clear
+                    End If
+                    On Error GoTo ErrHandle
+                End If
+            Next fld
+
+            rsTarget.Update
+        End If
+
+        rsSource.MoveNext
+    Loop
+
+    'MsgBox "基本工事コードでの受注転写が完了しましたニャ！", vbInformation
+    GoTo Finalize
+
+Finalize:
+    On Error Resume Next
+    If Not rsSource Is Nothing Then rsSource.Close
+    If Not rsTarget Is Nothing Then rsTarget.Close
+    Set rsSource = Nothing
+    Set rsTarget = Nothing
+    Set db = Nothing
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生したニャ：" & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
+'テーブル転写：Icubeから工事コード情報
+Public Sub mod_tabCopy2_kihonCodejou1()
+    On Error GoTo ErrHandle
+
+    Dim db As DAO.Database
+    Dim rsSource As DAO.Recordset
+    Dim rsTarget As DAO.Recordset
+    Dim codeValue As Variant
+    Dim fld As DAO.Field
+
+    Set db = CurrentDb()
+
+    ' 転写元
+    Set rsSource = db.OpenRecordset("SELECT * FROM Icube_", dbOpenSnapshot)
+
+    ' 転写先
+    Set rsTarget = db.OpenRecordset("kt_工事コード情報", dbOpenDynaset)
+
+    Do While Not rsSource.EOF
+        codeValue = rsSource!工事コード
+
+        ' 転写先にすでに存在しているかチェック
+        If DCount("*", "kt_工事コード情報", "工事コード = '" & Replace(codeValue, "'", "''") & "'") = 0 Then
+            rsTarget.AddNew
+
+            For Each fld In rsSource.Fields
+                If FieldExists(rsTarget, fld.Name) Then
+                    On Error Resume Next
+                    rsTarget(fld.Name).value = fld.value
+                    If Err.Number <> 0 Then
+                        Debug.Print "【型エラー】フィールド名: " & fld.Name
+                        Debug.Print "→ 値: " & fld.value & " ／ 型: " & TypeName(fld.value)
+                        Debug.Print "→ エラー内容: " & Err.description
+                        Err.Clear
+                    End If
+                    On Error GoTo ErrHandle
+                End If
+            Next fld
+
+            rsTarget.Update
+        End If
+
+        rsSource.MoveNext
+    Loop
+
+    'MsgBox "工事コード情報への転写が完了しましたニャ！", vbInformation
+    GoTo Finalize
+
+Finalize:
+    On Error Resume Next
+    If Not rsSource Is Nothing Then rsSource.Close
+    If Not rsTarget Is Nothing Then rsTarget.Close
+    Set rsSource = Nothing
+    Set rsTarget = Nothing
+    Set db = Nothing
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生したニャ：" & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
+
+'テーブル転写：Icubeから枝番工事コード
+Public Sub mod_tabCopy2_edaban1()
+    On Error GoTo ErrHandle
+
+    Dim db As DAO.Database
+    Dim rsSource As DAO.Recordset
+    Dim rsTarget As DAO.Recordset
+    Dim edabanCode As Variant
+    Dim fld As DAO.Field
+
+    Set db = CurrentDb()
+
+    ' 転写元：Icube_
+    Set rsSource = db.OpenRecordset("SELECT * FROM Icube_", dbOpenSnapshot)
+
+    ' 転写先：kt_枝番工事
+    Set rsTarget = db.OpenRecordset("kt_枝番工事", dbOpenDynaset)
+
+    Do While Not rsSource.EOF
+        edabanCode = rsSource!枝番工事コード
+
+        ' 転写先に既に存在するかチェック
+        If DCount("*", "kt_枝番工事", "枝番工事コード = '" & Replace(edabanCode, "'", "''") & "'") = 0 Then
+            rsTarget.AddNew
+
+            For Each fld In rsSource.Fields
+                If FieldExists(rsTarget, fld.Name) Then
+                    On Error Resume Next
+                    rsTarget(fld.Name).value = fld.value
+                    If Err.Number <> 0 Then
+                        Debug.Print "【型エラー】フィールド名: " & fld.Name
+                        Debug.Print "→ 値: " & fld.value & " ／ 型: " & TypeName(fld.value)
+                        Debug.Print "→ エラー内容: " & Err.description
+                        Err.Clear
+                    End If
+                    On Error GoTo ErrHandle
+                End If
+            Next fld
+
+            rsTarget.Update
+        End If
+
+        rsSource.MoveNext
+    Loop
+
+    'MsgBox "枝番工事コードでの転写が完了しましたニャ！", vbInformation
+    GoTo Finalize
+
+Finalize:
+    On Error Resume Next
+    If Not rsSource Is Nothing Then rsSource.Close
+    If Not rsTarget Is Nothing Then rsTarget.Close
+    Set rsSource = Nothing
+    Set rsTarget = Nothing
+    Set db = Nothing
+    Exit Sub
+
+ErrHandle:
+    MsgBox "エラーが発生したニャ：" & Err.description, vbCritical
+    Resume Finalize
+End Sub
+
